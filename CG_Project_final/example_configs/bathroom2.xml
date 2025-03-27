@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<camera type="perspective" fovy="35.9834">
+	<eye x="-2.57" y="17" z="50"/> 
+	<lookat x="-2.57" y="17" z="-10.6"/> 
+	<up x="0.0" y="1.0" z="0.0"/> 
+</camera>
+<scene width="1280" height="720" ambient="0.2, 0.2, 0.2"/>
+<light mtlname="Light" radiance="125.0,100.0,75.0"/>
+<pathtrace lightsamples="3" maxdepth="6" filterfrequence="0" saveimgfrequence="100" saveimgpath="./result/bathroom2"/>

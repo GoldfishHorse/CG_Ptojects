@@ -1,0 +1,22 @@
+cmake_minimum_required(VERSION 3.16)
+
+project(imgui)
+
+set(THIRD_PARTY_LIBRARY_PATH ${CMAKE_SOURCE_DIR}/external)
+
+set(IMGUI_SOURCES 
+    imgui.cpp 
+    imgui_demo.cpp 
+    imgui_draw.cpp 
+    imgui_tables.cpp 
+    imgui_widgets.cpp 
+    backends/imgui_impl_glfw.cpp 
+    backends/imgui_impl_opengl3.cpp 
+)
+
+add_library(imgui ${IMGUI_SOURCES})
+
+target_include_directories(imgui PUBLIC ${THIRD_PARTY_LIBRARY_PATH}/imgui)
+target_include_directories(imgui PUBLIC ${THIRD_PARTY_LIBRARY_PATH}/imgui/backends)
+target_include_directories(imgui PRIVATE ${THIRD_PARTY_LIBRARY_PATH}/glfw/include)
+target_include_directories(imgui PRIVATE ${THIRD_PARTY_LIBRARY_PATH}/glad/include)
