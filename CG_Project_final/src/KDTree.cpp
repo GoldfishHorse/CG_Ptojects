@@ -11,26 +11,17 @@ KDNode::KDNode(PKDNode left, PKDNode right)
     ASSERT(!(left == nullptr && right == nullptr), "Invalid argument!");
     if (left != nullptr && right != nullptr)
     {
-        /* concatenate faceVec from left and right */
-        /* https://stackoverflow.com/questions/3177241/what-is-the-best-way-to-concatenate-two-vectors */
-        faceVec.reserve(left->faceVec.size() + right->faceVec.size());
-        faceVec.insert(
-            faceVec.end(), left->faceVec.begin(), left->faceVec.end());
-        faceVec.insert(
-            faceVec.end(), right->faceVec.begin(), right->faceVec.end());
-
-        /* extend bounding box */
+        /* Internal nodes only need bounds; keeping all descendant faces here
+           turns a balanced tree into O(n log n) pointer storage. */
         this->extend(*this->left);
         this->extend(*this->right);
     }
     else if (left != nullptr && right == nullptr)
     {
-        faceVec = left->faceVec;
         this->extend(*this->left);
     }
     else if (left == nullptr && right != nullptr)
     {
-        faceVec = right->faceVec;
         this->extend(*this->right);
     }
     return;
@@ -75,6 +66,7 @@ void KDTree::release() {
     if (this->root != nullptr)
     {
         this->root->release();
+        delete this->root;
         this->root = nullptr;
     }
     return;
@@ -119,7 +111,6 @@ PKDNode KDTree::buildRec(
         node = new KDNode(
             this->buildRec(faceVecLeft, 1 + depth),
             this->buildRec(faceVecRight, 1 + depth));
-        node->faceVec = faceVec;
     }
 
     return node;

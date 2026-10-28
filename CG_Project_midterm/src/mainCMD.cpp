@@ -180,11 +180,21 @@ static int parseArgument(
             showHelp();
             return EXIT_FAILURE; /* end process */
         }
+        else
+        {
+            LOG_ERROR("Unknown option: %s", arg.c_str());
+            return EXIT_FAILURE;
+        }
+    }
+    if (filePath.empty())
+    {
+        LOG_ERROR("Missing required option --file/-F.");
+        return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }
 
-void renderWithZBufferChoice(Model &model, Camera &camera, const std::filesystem::path &outputPath, ZBufferChoice zBufferChoice)
+void renderWithZBufferChoice(Model &model, const std::filesystem::path &outputPath, ZBufferChoice zBufferChoice)
 {
     ZBuffer *zBuffer = nullptr;
 
@@ -276,7 +286,7 @@ int main(int argc, char *argv[])
     {
         for(const auto& [choice, name] : ChoiceName) {
             renderWithZBufferChoice(
-                model, camera,
+                model,
                 outputPath.parent_path() / (outputPath.stem().string() + "_" + name + ".bmp"),
                 choice
             );
@@ -284,7 +294,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        renderWithZBufferChoice(model, camera, outputPath, zBufferChoice);
+        renderWithZBufferChoice(model, outputPath, zBufferChoice);
     }
 
     return EXIT_SUCCESS;

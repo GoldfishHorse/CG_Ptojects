@@ -4,24 +4,25 @@
 #include "PathTracer.h"
 
 #include <mutex>
+#include <atomic>
 
 /* 在路径追踪的过程中进行窗口显示 */
 class SceneViewer
 {
 public:
-    SceneViewer(PathTracer *pathTracer = nullptr)
-        : pathTracer(pathTracer), windowOpened(false)
+    SceneViewer(PathTracer *tracer = nullptr)
+        : pathTracer(tracer), windowOpened(false)
     {
-        if (pathTracer != nullptr)
-            this->init(pathTracer);
+        if (tracer != nullptr)
+            this->init(tracer);
     };
 
-    void init(PathTracer *pathTracer)
+    void init(PathTracer *tracer)
     {
-        this->pathTracer = pathTracer;
-        this->w = static_cast<int>(pathTracer->scene->width);
-        this->h = static_cast<int>(pathTracer->scene->height);
-        this->frame.resize(pathTracer->scene->frameBuffer.size(), Vec3f{0.f});
+        this->pathTracer = tracer;
+        this->w = static_cast<int>(tracer->scene->width);
+        this->h = static_cast<int>(tracer->scene->height);
+        this->frame.resize(tracer->scene->frameBuffer.size(), Vec3f{0.f});
         this->windowOpened = false;
         return;
     }
@@ -45,5 +46,5 @@ public:
     std::vector<Vec3f> frame;
     int w, h;
     /* 窗口是否打开: 在窗口关闭后同时终止路径追踪 */
-    bool windowOpened;
+    std::atomic_bool windowOpened;
 };

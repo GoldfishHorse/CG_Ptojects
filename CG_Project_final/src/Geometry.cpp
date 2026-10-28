@@ -2,19 +2,29 @@
 
 bool BoundingBox::intersect(const Ray &ray) const
 {
-    /* https://tavianator.com/2011/ray_box.html */
-    Vec3f inv_dir = 1.f / ray.direction;
+    /* Robust slab test. The explicit parallel-axis case avoids 0 * inf NaNs. */
+    float tEnter = ray.tmin;
+    float tExit = ray.tmax;
+    for (glm::length_t axis = 0; axis < 3; ++axis)
+    {
+        const float direction = ray.direction[axis];
+        if (std::abs(direction) <= FLOAT_EPS)
+        {
+            if (ray.origin[axis] < minPoint[axis] || ray.origin[axis] > maxPoint[axis])
+                return false;
+            continue;
+        }
 
-    const Vec3f v1 = (this->minPoint - ray.origin) * inv_dir;
-    const Vec3f v2 = (this->maxPoint - ray.origin) * inv_dir;
-
-    const float tmin = glm::max(
-        glm::max(glm::min(v1.x, v2.x), glm::min(v1.y, v2.y)),
-        glm::min(v1.z, v2.z));
-    const float tmax = glm::min(
-        glm::min(glm::max(v1.x, v2.x), glm::max(v1.y, v2.y)),
-        glm::max(v1.z, v2.z));
-    return !(tmax < 0 || tmin > tmax || tmin >= ray.tmax || tmax <= ray.tmin);
+        float t0 = (minPoint[axis] - ray.origin[axis]) / direction;
+        float t1 = (maxPoint[axis] - ray.origin[axis]) / direction;
+        if (t0 > t1)
+            std::swap(t0, t1);
+        tEnter = std::max(tEnter, t0);
+        tExit = std::min(tExit, t1);
+        if (tEnter > tExit)
+            return false;
+    }
+    return true;
 }
 
 Point2f Intersection::getTexCoord() const
@@ -119,7 +129,9 @@ bool Face::hit(
     }
 
     intersection.point = ray.origin + ray.direction * t;
-    intersection.normal = this->getNormal();
+    const Point3f bc = this->barycentric(intersection.point);
+    Vec3f shadingNormal = normals[0] * bc.x + normals[1] * bc.y + normals[2] * bc.z;
+    intersection.normal = isZeroVec(shadingNormal) ? this->getNormal() : normalize(shadingNormal);
     intersection.face = this;
     ray.tmax = t;
     return true;

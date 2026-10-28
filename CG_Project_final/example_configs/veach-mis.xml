@@ -14,4 +14,4 @@
 <light mtlname="light3" radiance="20,20,20"/>
 <light mtlname="light4" radiance="10,10,10"/>
 
-<pathtrace lightsamples="3" maxdepth="3" filterfrequence="0" saveimgfrequence="100" saveimgpath="./result/veach-mis"/>
+<pathtrace lightsamples="3" maxdepth="3" filterfrequency="0" saveimgfrequency="100" saveimgpath="./result/veach-mis"/>

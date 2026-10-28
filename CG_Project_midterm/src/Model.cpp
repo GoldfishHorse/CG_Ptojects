@@ -3,8 +3,8 @@
 #include <string>
 #include <algorithm>
 #include <filesystem>
-#include <regex>
 #include <numeric>
+#include <optional>
 #include "utils.h"
 #include "Model.h"
 
@@ -97,40 +97,53 @@ bool Model::parseFace(const std::string &line, Face &face)
 
 	ASSERT(tokens.size() == 3 || tokens.size() == 4, "Invalid file format!");
 
-	INT vidx, vtidx, vnidx;
+	auto parseIndex = [](const std::string& text, const size_t count) -> std::optional<size_t>
+	{
+		if (text.empty())
+			return std::nullopt;
+		try
+		{
+			const long long raw = std::stoll(text);
+			if (raw == 0)
+				return std::nullopt;
+			const long long resolved = raw > 0
+				? raw - 1
+				: static_cast<long long>(count) + raw;
+			if (resolved < 0 || resolved >= static_cast<long long>(count))
+				return std::nullopt;
+			return static_cast<size_t>(resolved);
+		}
+		catch (const std::exception&)
+		{
+			return std::nullopt;
+		}
+	};
 
 	for (const std::string &token : tokens)
 	{
+		const size_t firstSlash = token.find('/');
+		const size_t secondSlash = firstSlash == std::string::npos
+			? std::string::npos : token.find('/', firstSlash + 1);
 
-		if (
-			std::regex_match(token, std::regex(R"(\d+/\d+/\d+)")) ||
-			std::regex_match(token, std::regex(R"(\d+//\d+//\d+)")))
-		{
-			sscanf(token.c_str(), "%d/%d/%d", &vidx, &vtidx, &vnidx);
-			face.vIdx.push_back(vidx - 1);
-			face.vtIdx.push_back(vtidx - 1);
-			face.vnIdx.push_back(vnidx - 1);
-		}
-		else if (
-			std::regex_match(token, std::regex(R"(\d+/\d+)")) ||
-			std::regex_match(token, std::regex(R"(\d+//\d+)")))
-		{
-			sscanf(token.c_str(), "%d/%d", &vidx, &vtidx);
+		const std::string vertexText = token.substr(0, firstSlash);
+		const std::string texcoordText = firstSlash == std::string::npos
+			? "" : token.substr(firstSlash + 1,
+				secondSlash == std::string::npos ? std::string::npos : secondSlash - firstSlash - 1);
+		const std::string normalText = secondSlash == std::string::npos
+			? "" : token.substr(secondSlash + 1);
 
-			face.vIdx.push_back(vidx - 1);
-			face.vtIdx.push_back(vtidx - 1);
-		}
-		else if (
-			std::regex_match(token, std::regex("\\d+")))
+		const auto vertexIndex = parseIndex(vertexText, vertices.size());
+		if (!vertexIndex.has_value())
 		{
-			sscanf(token.c_str(), "%d", &vidx);
-			face.vIdx.push_back(vidx - 1);
-		}
-		else
-		{
-			LOG_ERROR("Parse face fails: unknown format. Content: %s.", line.c_str());
+			LOG_ERROR("Parse face fails: invalid vertex index. Content: %s.", line.c_str());
 			return false;
 		}
+
+		face.vIdx.push_back(vertexIndex.value());
+		face.vtIdx.push_back(
+			parseIndex(texcoordText, texcoords.size()).value_or(Face::invalidIndex));
+		face.vnIdx.push_back(
+			parseIndex(normalText, normals.size()).value_or(Face::invalidIndex));
 	}
 
 	/* 通过叉乘计算法向量 */

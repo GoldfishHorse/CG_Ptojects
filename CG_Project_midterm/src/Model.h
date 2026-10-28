@@ -4,6 +4,7 @@
 #include "defs.h"
 
 #include <vector>
+#include <limits>
 
 /* 顶点结构体 */
 struct Vertex
@@ -15,6 +16,7 @@ struct Vertex
 /* 面结构体, 仅包含顶点 id 而不包含具体顶点 */
 struct Face
 {
+	static constexpr size_t invalidIndex = std::numeric_limits<size_t>::max();
 	std::vector<size_t> vIdx;
 	std::vector<size_t> vnIdx;
 	std::vector<size_t> vtIdx;

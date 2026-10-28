@@ -50,11 +50,15 @@ public:
         this->build(faceVec);
     }
     ~KDTree() { this->release(); }
+    DISALLOW_COPY_AND_MOVE(KDTree);
     void release();
 
     bool empty() const { return this->root == nullptr; }
 
-    void build(std::vector<Face *>& faceVec) { this->root = this->buildRec(faceVec); }
+    void build(std::vector<Face *>& faceVec) {
+        release();
+        this->root = this->buildRec(faceVec);
+    }
     PKDNode buildRec(std::vector<Face *>& faceVec, const unsigned depth = 0);
 
 public:

@@ -25,7 +25,7 @@ public:
                 glm::dot(this->direction, normal);
     }
     /* 折射; 若折射无法发生则返回 std::nullopt */
-    std::optional<Vec3f> refract(const Vec3f &normal, float eta) {
+    std::optional<Vec3f> refract(const Vec3f &normal, float eta) const {
         /* Ref: https://www.cnblogs.com/night-ride-depart/p/7429618.html */
         const float cosi = glm::dot(this->direction, normal);
         const float cost2 = 1.0f - eta * eta * (1.0f - cosi * cosi);

@@ -1,72 +1,70 @@
-cmake_minimum_required(VERSION 3.16)
-project("project")
+cmake_minimum_required(VERSION 3.20)
+project(cpu_path_tracer VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /DNDEBUG /DLOG_LEVEL=1 /D_CRT_SECURE_NO_WARNINGS")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Od /Zi /DLOG_LEVEL=0")
-    add_compile_options(/utf-8)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+option(CPU_PATH_TRACER_ENABLE_OPENMP "Enable OpenMP pixel parallelism" ON)
+
+set(THIRD_PARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
+foreach(dependency glfw glm stb tinyobjloader tinyxml2)
+    if(NOT EXISTS "${THIRD_PARTY_DIR}/${dependency}")
+        message(FATAL_ERROR
+            "Missing third_party/${dependency}. Run build.ps1 first or clone the dependency manually.")
+    endif()
+endforeach()
+
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+add_subdirectory("${THIRD_PARTY_DIR}/glfw" EXCLUDE_FROM_ALL)
+
+add_library(tinyxml2 STATIC
+    "${THIRD_PARTY_DIR}/tinyxml2/tinyxml2.cpp")
+target_include_directories(tinyxml2 PUBLIC
+    "${THIRD_PARTY_DIR}/tinyxml2")
+
+find_package(OpenGL REQUIRED)
+if(CPU_PATH_TRACER_ENABLE_OPENMP)
+    find_package(OpenMP QUIET)
+endif()
+
+file(GLOB PROJECT_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+add_executable(cpu_path_tracer
+    ${PROJECT_SOURCES}
+    "${THIRD_PARTY_DIR}/glad/glad.c")
+
+target_include_directories(cpu_path_tracer PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${THIRD_PARTY_DIR}"
+    "${THIRD_PARTY_DIR}/glad"
+    "${THIRD_PARTY_DIR}/glm"
+    "${THIRD_PARTY_DIR}/stb"
+    "${THIRD_PARTY_DIR}/tinyobjloader")
+
+target_compile_definitions(cpu_path_tracer PRIVATE
+    PROJECT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    $<$<CONFIG:Debug>:LOG_LEVEL=0>
+    $<$<NOT:$<CONFIG:Debug>>:LOG_LEVEL=1>)
+
+if(MSVC)
+    target_compile_options(cpu_path_tracer PRIVATE /W4 /permissive- /utf-8)
+    target_compile_definitions(cpu_path_tracer PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 else()
-    message(FATAL_ERROR "Unsupported C++ compiler.")
+    target_compile_options(cpu_path_tracer PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-if(NOT CMAKE_BUILD_TYPE)
-    # Note that in MSVC by default is Debug mode;
-    # One shall must add --config Release to switch to Release mode.  
-    set(CMAKE_BUILD_TYPE Release)
-endif()
+target_link_libraries(cpu_path_tracer PRIVATE
+    glfw tinyxml2 OpenGL::GL)
 
-add_definitions(-DPROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-
-set(GLFW_BUILD_EXAMPLES OFF)
-set(GLFW_BUILD_TESTS OFF)
-set(GLFW_BUILD_DOCS OFF)
-IF (CMAKE_SYSTEM_NAME MATCHES "Linux") 
-    set(GLFW_BUILD_WAYLAND OFF)
-    set(GLFW_BUILD_X11 ON)
-endif()
-add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/glfw)
-set_target_properties(glfw PROPERTIES FOLDER "lib/glfw")
-set_target_properties(uninstall PROPERTIES FOLDER "lib/glfw")
-set_target_properties(update_mappings PROPERTIES FOLDER "lib/glfw")
-
-
-set(tinyxml2_BUILD_TESTING OFF)
-add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/tinyxml2)
-set_target_properties(tinyxml2 PROPERTIES FOLDER "lib")
-
-add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/glm)
-set_target_properties(glm PROPERTIES FOLDER "lib/glm")
-
-
-file(GLOB SRCS "${CMAKE_SOURCE_DIR}/src/*.cpp" "${CMAKE_SOURCE_DIR}/third_party/glad/glad.c")
-
-add_executable(project ${SRCS})
-
-target_include_directories(project PRIVATE 
-    "${CMAKE_SOURCE_DIR}/src" 
-    "${CMAKE_SOURCE_DIR}/third_party"
-    "${CMAKE_SOURCE_DIR}/third_party/glm"
-    "${CMAKE_SOURCE_DIR}/third_party/glfw/include"
-    "${CMAKE_SOURCE_DIR}/third_party/stb"
-    "${CMAKE_SOURCE_DIR}/third_party/glad"
-    "${CMAKE_SOURCE_DIR}/third_party/tinyobjloader"
-    "${CMAKE_SOURCE_DIR}/third_party/tinyxml2"
-)
-
-find_package(OpenMP REQUIRED)
-
-
-# 链接库
-IF (CMAKE_SYSTEM_NAME MATCHES "Linux") 
-    target_link_libraries(project tinyxml2 glfw glm dl GL m)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(cpu_path_tracer PRIVATE OpenMP::OpenMP_CXX)
+    message(STATUS "OpenMP enabled")
 else()
-    target_link_libraries(project tinyxml2 glfw glm)
+    message(STATUS "OpenMP not found; building a single-threaded renderer")
 endif()
-target_link_libraries(project OpenMP::OpenMP_CXX ) 
+
+set_property(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" PROPERTY VS_STARTUP_PROJECT cpu_path_tracer)

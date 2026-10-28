@@ -11,49 +11,30 @@ void LightArea::addLightFace(const Face& face)
     return;
 }
 
-const Face* LightArea::getRandomFace() const
+void LightArea::finalize()
 {
-    if (this->faces.empty())
+    accumulatedAreas.clear();
+    accumulatedAreas.reserve(faces.size());
+    float accumulated = 0.0f;
+    for (const Face* face : faces)
+    {
+        accumulated += face->area();
+        accumulatedAreas.push_back(accumulated);
+    }
+    area = accumulated;
+}
+
+const Face* LightArea::getRandomFaceByArea() const
+{
+    if (faces.empty() || area <= 0.0f || accumulatedAreas.size() != faces.size())
     {
         LOG_WARNING("Empty light Area!");
         return nullptr;
-    } else {
-        return this->faces.at(randomInteger(this->faces.size()));
     }
-}
-
-const Face * LightArea::getRandomFaceByArea() 
-{
-    const Face * ret = nullptr;
-    if (this->faces.empty())
-    {
-        LOG_WARNING("Empty light Area!");
-    } else {
-        const float sampleArea = this->area * random01();
-        if (this->accumulatedAreas.empty())
-        {
-            /* build this->accumulatedAreas */
-            this->accumulatedAreas.push_back(this->faces.front()->area());
-            for (auto it = this->faces.cbegin() + 1; it != this->faces.cend(); ++it)
-            {
-                this->accumulatedAreas.push_back((*it)->area() + this->accumulatedAreas.back());
-            }
-        }
-        if (
-            auto it = std::lower_bound(
-                this->accumulatedAreas.cbegin(),
-                this->accumulatedAreas.cend(),
-                sampleArea
-            );
-            it != this->accumulatedAreas.cend()
-        ) {
-            ret = this->faces.at(
-                std::distance(this->accumulatedAreas.cbegin(), it)
-            );
-        }
-        
-    }
-    return ret;
+    const float sampleArea = area * random01();
+    const auto it = std::lower_bound(accumulatedAreas.cbegin(), accumulatedAreas.cend(), sampleArea);
+    const size_t index = static_cast<size_t>(std::distance(accumulatedAreas.cbegin(), it));
+    return faces.at(std::min(index, faces.size() - 1));
 }
 
 
@@ -87,6 +68,8 @@ void Model::initLights()
             LOG_WARNING("Re-initing Lights!");
             this->lightAreas.clear();
         }
+        this->accumulatedLightAreas.clear();
+        this->totalLightArea = 0.0f;
 
         std::map<std::string, LightArea> lightAreaMap;
         for (const Face& face: this->faces)
@@ -122,6 +105,13 @@ void Model::initLights()
                 return p.second;
             }
         );
+        this->accumulatedLightAreas.reserve(this->lightAreas.size());
+        for (LightArea& lightArea : this->lightAreas)
+        {
+            lightArea.finalize();
+            this->totalLightArea += lightArea.area;
+            this->accumulatedLightAreas.push_back(this->totalLightArea);
+        }
     }
     return;
 }
@@ -158,11 +148,8 @@ bool Model::hit(
         ret = false;
     } else if (this->kdTree.empty()) {
         ret = false;
-        for (const Face& face : this->faces) {
-            ret = face.hit(ray, intersection);
-            if (ret)
-                break;
-        }
+        for (const Face& face : this->faces)
+            ret = face.hit(ray, intersection) || ret;
     } else {
         ret = this->kdTree.root->hit(ray, intersection);
     }
@@ -233,16 +220,21 @@ Texture* Model::addTexture(Texture&& texture)
 }
 
 
-const LightArea* Model::getRandomLightArea() const
+const Face* Model::sampleLight(float& pdfArea) const
 {
-    if (this->lightAreas.empty())
+    pdfArea = 0.0f;
+    if (lightAreas.empty() || totalLightArea <= 0.0f ||
+        accumulatedLightAreas.size() != lightAreas.size())
     {
-        LOG_WARNING("No light area in the scene!");
         return nullptr;
-    } else if (this->lightAreas.size() == (size_t(1))) {
-        return &(this->lightAreas.front());
-    } 
-    else {
-        return &(this->lightAreas.at(randomInteger(this->lightAreas.size())));
     }
+
+    const float sampleArea = totalLightArea * random01();
+    const auto it = std::lower_bound(
+        accumulatedLightAreas.cbegin(), accumulatedLightAreas.cend(), sampleArea);
+    const size_t index = static_cast<size_t>(
+        std::distance(accumulatedLightAreas.cbegin(), it));
+    const LightArea& lightArea = lightAreas.at(std::min(index, lightAreas.size() - 1));
+    pdfArea = 1.0f / totalLightArea;
+    return lightArea.getRandomFaceByArea();
 }

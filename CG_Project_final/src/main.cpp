@@ -1,129 +1,148 @@
 #include "SceneLoader.h"
-#include "Model.h"
 #include "SceneViewer.h"
 
+#include <cstdlib>
+#include <filesystem>
 #include <string>
 
+namespace {
 
-static void printHelp() {
+struct CommandLineOptions {
+    std::string objFilePath;
+    std::string configFilePath;
+    std::string mtlFilePath;
+    std::string sceneName;
+    std::filesystem::path outputPath{"result/headless.png"};
+    size_t iterations = 1;
+    bool headless = false;
+};
+
+enum class ParseResult { success, help, error };
+
+void printHelp()
+{
     std::puts(R"(
-Usage: main [options]
-Options:
-    --objFilePath, -obj <path>        Path to the .obj file.
-    --configFilePath, -config <path>  Path to the config (.xml) file.
-    --mtlFilePath, -mtl <path>        Path to the .mtl file.
-    --sceneName, -n <name>            Name of the scene.
-    --help, -h                        Print this help message.)");
-    return;
+CPU Monte Carlo Path Tracer
+
+Usage:
+  cpu_path_tracer [scene options] [render options]
+
+Scene options:
+  --obj, -obj <path>        OBJ geometry file
+  --config, -config <path>  XML render configuration
+  --mtl, -mtl <path>        MTL material file
+  --name, -n <name>         Scene/window name
+
+Render options:
+  --headless                Render without opening a window
+  --iterations, -i <count>  Iterations for headless rendering (default: 1)
+  --output, -o <path>       Headless PNG/JPG/BMP output path
+  --help, -h                Show this help
+
+With no scene options, the bundled example-scenes-cg24/veach-mis paths are used.)");
 }
-/* 解析命令行参数 */
-static bool parseCommandLineArgs(
-    __IN__  int argc, 
-    __IN__  char* argv[],
-    __OUT__ std::string& objFilePath,
-    __OUT__ std::string& configFilePath,
-    __OUT__ std::string& mtlFilePath,
-    __OUT__ std::string& sceneName
-) {
 
-    objFilePath =  "";
-    configFilePath = "";
-    mtlFilePath =  "";
-    sceneName = "";
-
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = stringToLower(std::string(argv[i]));
-        if (arg == "--objfilepath" || arg == "-obj") {
-            if (i + 1 < argc) {
-                objFilePath = argv[++i];
-            } else {
-                LOG_ERROR("Error: Missing value for --objFilePath/-Obj option.");
-                return false;
-            }
-        } else if (arg == "--configfilepath" || arg == "-config") {
-            if (i + 1 < argc) {
-                configFilePath = argv[++i];
-            } else {
-                LOG_ERROR("Error: Missing value for --configFilePath/-Config option.");
-                return false;
-            }
-        } else if (arg == "--mtlfilepath" || arg == "-mtl") {
-            if (i + 1 < argc) {
-                mtlFilePath = argv[++i];
-            } else {
-                LOG_ERROR("Error: Missing value for --mtlFilePath/-Mtl option.");
-                return false;
-            }
-        } else if (arg == "--scenename" || arg == "-n") {
-            if (i + 1 < argc) {
-                sceneName = argv[++i];
-            } else {
-                LOG_ERROR("Error: Missing value for --sceneName option.");
-                return false;
-            }
-        } else if (arg == "--help" || arg == "-h") {
-            printHelp();
-            /* 应退出程序, 因此需要返回 false。 */
-            return false; 
-        } 
-         else {
-            LOG_ERROR("Error: Unknown option %s.", arg.c_str());
-            return false;
-        }
-    }
-    
-    /* Argument Check */
-    if (objFilePath.empty() &&  configFilePath.empty() && mtlFilePath.empty() && sceneName.empty() )
-    {
-        /* 所有参数都未给出, 设置为默认值 */
-        objFilePath = "./example-scenes-cg24/veach-mis/veach-mis.obj";
-        configFilePath = "./example-scenes-cg24/veach-mis/veach-mis.xml";
-        mtlFilePath = "./example-scenes-cg24/veach-mis/veach-mis.mtl";
-        sceneName = "veach-mis";
-    } else if (sceneName.empty())
-    {
-        LOG_ERROR("Missing value for --sceneName option.");
-        return false;
-    } else if (objFilePath.empty() || configFilePath.empty(), mtlFilePath.empty())
-    {
-        /* 这三个参数必须同时全部给出, 不能仅给出某几个 */
-        LOG_ERROR("Error: Missing required options (--objFilePath, --configFilePath, --mtlFilePath).");
+bool readValue(int argc, char* argv[], int& index, std::string& value, const char* option)
+{
+    if (index + 1 >= argc) {
+        LOG_ERROR("Missing value for %s.", option);
         return false;
     }
-
+    value = argv[++index];
     return true;
 }
 
-int main(int argc, char* argv[]) {
-    /* 读取命令行参数 */
-    std::string objFilePath, configFilePath,
-                mtlFilePath, sceneName;
-    bool success = parseCommandLineArgs(
-        argc, argv,
-        objFilePath, configFilePath,
-        mtlFilePath, sceneName
-    );
-    if (success)
-    {
-        SceneLoader sceneLoader =  SceneLoader(
-            objFilePath, configFilePath, 
-            mtlFilePath, sceneName
-        );
-
-        /* 加载场景 */
-        Scene scene;
-        sceneLoader.loadScene(scene);
-        scene.model.buildKDTree();
-
-        /* 初始化 PathTracer */
-        PathTracer pathTracer;
-        sceneLoader.loadConfig(scene, pathTracer);
-        pathTracer.init(&scene);
-
-        /* 显示场景 */
-        SceneViewer displayer;
-        displayer.init(&pathTracer);
-        displayer.viewScene();
+ParseResult parseCommandLine(int argc, char* argv[], CommandLineOptions& options)
+{
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = stringToLower(argv[index]);
+        if (argument == "--obj" || argument == "--objfilepath" || argument == "-obj") {
+            if (!readValue(argc, argv, index, options.objFilePath, "--obj")) return ParseResult::error;
+        } else if (argument == "--config" || argument == "--configfilepath" || argument == "-config") {
+            if (!readValue(argc, argv, index, options.configFilePath, "--config")) return ParseResult::error;
+        } else if (argument == "--mtl" || argument == "--mtlfilepath" || argument == "-mtl") {
+            if (!readValue(argc, argv, index, options.mtlFilePath, "--mtl")) return ParseResult::error;
+        } else if (argument == "--name" || argument == "--scenename" || argument == "-n") {
+            if (!readValue(argc, argv, index, options.sceneName, "--name")) return ParseResult::error;
+        } else if (argument == "--output" || argument == "-o") {
+            std::string value;
+            if (!readValue(argc, argv, index, value, "--output")) return ParseResult::error;
+            options.outputPath = value;
+        } else if (argument == "--iterations" || argument == "-i") {
+            std::string value;
+            if (!readValue(argc, argv, index, value, "--iterations")) return ParseResult::error;
+            try {
+                options.iterations = std::stoull(value);
+            } catch (const std::exception&) {
+                LOG_ERROR("Invalid iteration count: %s", value.c_str());
+                return ParseResult::error;
+            }
+            if (options.iterations == 0) {
+                LOG_ERROR("Iteration count must be greater than zero.");
+                return ParseResult::error;
+            }
+        } else if (argument == "--headless") {
+            options.headless = true;
+        } else if (argument == "--help" || argument == "-h") {
+            printHelp();
+            return ParseResult::help;
+        } else {
+            LOG_ERROR("Unknown option: %s", argv[index]);
+            return ParseResult::error;
+        }
     }
-    return 0;
+
+    const bool noSceneArguments = options.objFilePath.empty() && options.configFilePath.empty() &&
+                                  options.mtlFilePath.empty() && options.sceneName.empty();
+    if (noSceneArguments) {
+        options.objFilePath = "example-scenes-cg24/veach-mis/veach-mis.obj";
+        options.configFilePath = "example-scenes-cg24/veach-mis/veach-mis.xml";
+        options.mtlFilePath = "example-scenes-cg24/veach-mis/veach-mis.mtl";
+        options.sceneName = "veach-mis";
+    } else if (options.objFilePath.empty() || options.configFilePath.empty() ||
+               options.mtlFilePath.empty() || options.sceneName.empty()) {
+        LOG_ERROR("--obj, --config, --mtl and --name must be provided together.");
+        return ParseResult::error;
+    }
+    return ParseResult::success;
+}
+
+} // namespace
+
+int main(int argc, char* argv[])
+{
+    CommandLineOptions options;
+    const ParseResult parseResult = parseCommandLine(argc, argv, options);
+    if (parseResult == ParseResult::help)
+        return EXIT_SUCCESS;
+    if (parseResult == ParseResult::error)
+        return EXIT_FAILURE;
+
+    SceneLoader sceneLoader(
+        options.objFilePath, options.configFilePath,
+        options.mtlFilePath, options.sceneName);
+
+    Scene scene;
+    if (!sceneLoader.loadScene(scene))
+        return EXIT_FAILURE;
+    scene.model.buildKDTree();
+
+    PathTracer pathTracer;
+    if (!sceneLoader.loadConfig(scene, pathTracer))
+        return EXIT_FAILURE;
+    pathTracer.init(&scene);
+
+    if (options.headless) {
+        for (size_t iteration = 0; iteration < options.iterations; ++iteration)
+            pathTracer.renderScene();
+        if (!scene.frameBuffer.writeToFile(options.outputPath))
+            return EXIT_FAILURE;
+        LOG_INFO("Wrote %zu-iteration render to %s.",
+                 options.iterations, options.outputPath.string().c_str());
+        return EXIT_SUCCESS;
+    }
+
+    SceneViewer viewer(&pathTracer);
+    viewer.viewScene();
+    return EXIT_SUCCESS;
 }

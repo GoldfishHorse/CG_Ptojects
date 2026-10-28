@@ -47,7 +47,7 @@ struct Face {
     Vec3f normals[3];
 
     /* 面片材质 */
-    const Material* material;
+    const Material* material = nullptr;
     /* 面片的 (轴对齐) 包围盒 */
     BoundingBox getBoundingBox() const {
         return BoundingBox {

@@ -1,224 +1,101 @@
+[CmdletBinding()]
+param(
+    [ValidateSet("Debug", "Release")]
+    [string]$Configuration = "Release",
+    [switch]$Rebuild
+)
 
-enum LogLevel {
-    DEBUG = 0
-    INFO = 1
-    WARNING = 2
-    ERROR = 3
-}
+$ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-class Logger {
-    [LogLevel]$LogLevel
-
-    Logger([LogLevel]$logLevel) {
-        $this.LogLevel = $logLevel
-    }
-
-    [void]Log([LogLevel]$level, [string]$message) {
-        if ([int]$level.value__ -ge  [int]$this.LogLevel.value__) {
-            switch ($level) {
-                ([LogLevel]::DEBUG) { 
-                    Write-Host "[" -NoNewline
-                    Write-Host "DEBUG" -ForegroundColor Gray -NoNewline
-                    Write-Host "] $message"
-                }
-                ([LogLevel]::INFO) { 
-                    Write-Host "[" -NoNewline
-                    Write-Host "INFO" -ForegroundColor Green -NoNewline
-                    Write-Host "] $message"
-                }
-                ([LogLevel]::WARNING) { 
-                    Write-Host "[" -NoNewline
-                    Write-Host "WARNING" -ForegroundColor Yellow -NoNewline
-                    Write-Host "] $message"
-                }
-                ([LogLevel]::ERROR) {
-                    Write-Host "[" -NoNewline
-                    Write-Host "ERROR" -ForegroundColor Red -NoNewline
-                    Write-Host "] $message"
-                }
-            }
-        }
-    }
-
-    [void]Debug([string]$message) { $this.Log([LogLevel]::DEBUG, $message) }
-    [void]Info([string]$message) { $this.Log([LogLevel]::INFO, $message) }
-    [void]Warning([string]$message) { $this.Log([LogLevel]::WARNING, $message) }
-    [void]Error([string]$message) { $this.Log([LogLevel]::ERROR, $message) }
-}
-
-$logger = [Logger]::new([LogLevel]::INFO)
-
-
-function Git-Clone {
-    param (
-        [string]$repositoryUrl,
-        [string]$localPath
+function Invoke-Checked {
+    param(
+        [Parameter(Mandatory)] [string]$Program,
+        [Parameter(Mandatory)] [string[]]$Arguments
     )
 
-    [bool]$ret  = $False
-    if (-not (Get-Command git -ErrorAction SilentlyContinue))
-    {
-        $logger.Error("系统中未找到 Git.")
-    } elseif (Test-Path $localPath) {
-        $logger.Warning("目标路径 $localPath 已存在")
-        $ret = $True
-    } else {
-        try {
-            git clone $repositoryUrl $localPath
-            if ($LASTEXITCODE -eq 0) {
-                $logger.Info("仓库 $repositoryUrl clone 成功到 $localPath." )
-                $ret = $True
-            } else {
-                $logger.Error("仓库 $repositoryUrl clone 失败.")
-            }
-        } catch {
-            $logger.Error("仓库 $repositoryUrl clone 中出现错误: $($_.Exception.Message)")
-        }
+    & $Program @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Program failed with exit code $LASTEXITCODE."
     }
-    
-    return $ret
 }
 
-function Main {
-
-    # 设置 PowerShell 控制台的输出和输入编码为 UTF-8
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    [Console]::InputEncoding = [System.Text.Encoding]::UTF8
-    
-    # https://learn.microsoft.com/zh-cn/powershell/module/microsoft.powershell.core/about/about_automatic_variables?view=powershell-7.5#psscriptroot
-    [string]$projectPath = $PSScriptRoot
-    [string]$thirdPartyPath = Join-Path $projectPath "third_party"
-    [string]$buildPath = Join-Path $projectPath "build"
-    [string]$srcPath = Join-Path $projectPath "src"
-    [int]$buildParallel = 16
-    [string]$sceneFileurl = "http://10.76.1.181/courses/graphics/2024/files/example-scenes-cg24.zip"
-    
-    if (-not (Test-Path $srcPath))
-    {
-        $logger.Error("找不到 $srcPath 目录.")
-        return
-    }
-
-    if (-not (Test-Path $thirdPartyPath))
-    {
-        New-Item $thirdPartyPath -ItemType Directory -Force | Out-Null
-    } 
-    $logger.Info("正在克隆仓库...")
-
-
-    [bool]$success =   $(Git-Clone "https://github.com/g-truc/glm.git" $(Join-Path $thirdPartyPath "glm")) `
-                         -and $(Git-Clone "https://github.com/glfw/glfw.git" $(Join-Path $thirdPartyPath "glfw")) `
-                         -and $(Git-Clone "https://github.com/nothings/stb.git" $(Join-Path $thirdPartyPath "stb")) `
-                         -and $(Git-Clone "https://github.com/tinyobjloader/tinyobjloader.git" $(Join-Path $thirdPartyPath "tinyobjloader")) `
-                         -and $(Git-Clone "https://github.com/leethomason/tinyxml2.git" $(Join-Path $thirdPartyPath "tinyxml2"))
-
-    if ($success)
-    {
-        $logger.Info("仓库 clone 完成！")
-    } else {
-        $logger.Info("仓库 clone 失败.")
-        return
-    }
-
-    if (-not (Get-Command cmake -ErrorAction SilentlyContinue))
-    {
-        $logger.Error("系统中未找到 cmake.")
-        return
-    } else {
-        $logger.Info($("找到 cmake: " + (Get-Command cmake).Source))
-    }
-
-
-    $logger.Info("构建路径: $buildPath.")
-
-    if (Get-Command cl -ErrorAction SilentlyContinue)
-    {
-        $logger.Info($("编译器:" + (Get-Command cl).Source))
-        $logger.Info("使用 MSVC 构建项目。")
-        cmake -G "Visual Studio 17 2022" -A x64 -B $buildPath -S $projectPath 
-        cmake --build $buildPath --config Release --parallel $buildParallel
-    } elseif (
-        (Get-Command gcc -ErrorAction SilentlyContinue) -and 
-        (Get-Command make -ErrorAction SilentlyContinue)
-    ) {
-        $logger.Info($("编译器:" + (Get-Command gcc).Source))
-        $logger.Info("使用 GNU Make 构建项目。")
-        cmake -G "Unix Makefiles" -B $buildPath -S $projectPath -DCMAKE_BUILD_TYPE=RELEASE
-        cmake --build $buildPath --parallel $buildParallel
-    } else {
-        $logger.Error("找不到编译器.")
-        return
-    }
-
-    $sceneFile = Join-Path -Path $projectPath -ChildPath "example-scenes-cg24.zip"
-    $sceneFileFolder = Join-Path -Path $projectPath -ChildPath "example-scenes-cg24"
-    if ( 
-        (-not (Test-Path $sceneFile -PathType Leaf)) -and 
-        (-not (Test-Path $sceneFileFolder -PathType Container))
-    ) {
-        
-        $logger.Info("正在下载 $sceneFile")
-        try {
-            Invoke-WebRequest -Uri $sceneFileurl -OutFile $sceneFile
-        }
-        catch {
-            # 下载失败时报告错误  
-            $logger.Error("文件下载失败: $_")
-            return
-        }
-        Write-Host "文件下载成功: $sceneFile."
-    }
-
-    if (
-        (-not (Test-Path $sceneFileFolder -PathType Container)) -or 
-        (-not (Test-Path $(Join-Path $sceneFileFolder "*") <# 空目录 #> ) )
+function Initialize-Dependency {
+    param(
+        [Parameter(Mandatory)] [string]$Name,
+        [Parameter(Mandatory)] [string]$Repository,
+        [Parameter(Mandatory)] [string]$Revision,
+        [Parameter(Mandatory)] [string]$RequiredFile
     )
-    {
-        $logger.Info("解压 $sceneFile.")
-        New-Item $sceneFileFolder -ItemType Directory -Force  | Out-Null
-        try {        
-            Expand-Archive -Path $sceneFile -DestinationPath $projectPath
-        } catch {
-            $logger.Error("文件解压失败: $_")
-            return
-        }
+
+    $destination = Join-Path $PSScriptRoot "third_party/$Name"
+    $marker = Join-Path $destination $RequiredFile
+    if (Test-Path -LiteralPath $marker -PathType Leaf) {
+        Write-Host "[dependency] ${Name}: ready"
+        return
     }
 
-    <#  由于程序读取 .xml 文件的逻辑与 example-scenes-cg24.zip 中给定 .xml 配置文件有所不同
-        因此用 example_configs 中的 .xml 文件覆盖  #>
-    $configPath = Join-Path $projectPath "example_configs"
-    if ( (Test-Path $configPath) -and (Test-Path $(Join-Path $sceneFileFolder "*") ) )
-    {
-        $srcFile = Join-Path $configPath "bathroom2.xml"
-        if (Test-Path $srcFile)
-        {
-            $dstFile = Join-Path  -Path $sceneFileFolder -ChildPath "bathroom2/bathroom2.xml"
-            $logger.Info("用 $srcFile 替换 $dstFile .")
-            Copy-Item  -Path $srcFile -Destination $dstFile -Force
-        }
-        $srcFile = Join-Path $configPath "cornell-box.xml"
-        if (Test-Path $srcFile)
-        {
-            $dstFile = Join-Path  -Path $sceneFileFolder -ChildPath "cornell-box/cornell-box.xml"
-            $logger.Info("用 $srcFile 替换 $dstFile .")
-            Copy-Item  -Path $srcFile -Destination $dstFile -Force
-        }
-        $srcFile = Join-Path $configPath "veach-mis.xml"
-        if (Test-Path $srcFile)
-        {
-            $dstFile = Join-Path  -Path $sceneFileFolder -ChildPath "veach-mis/veach-mis.xml"
-            $logger.Info("用 $srcFile 替换 $dstFile .")
-            Copy-Item  -Path $srcFile -Destination $dstFile -Force
-        }
+    if (Test-Path -LiteralPath $destination) {
+        throw "Incomplete dependency directory: $destination. Remove it and run the script again."
     }
 
-    [string]$exePath = (Get-ChildItem -Path ".\build\" -Filter "project.exe" -File -Recurse).FullName
-    if ($exePath)
-    {
-        $logger.Info("项目构建成功: 请运行 $exePath .")
-    }
-    return
+    Write-Host "[dependency] ${Name}: cloning $Revision"
+    Invoke-Checked git @("init", $destination)
+    Invoke-Checked git @("-C", $destination, "remote", "add", "origin", $Repository)
+    Invoke-Checked git @("-C", $destination, "fetch", "--depth", "1", "origin", $Revision)
+    Invoke-Checked git @("-C", $destination, "checkout", "--detach", "FETCH_HEAD")
 }
 
-Main
+if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+    throw "CMake 3.20 or newer is required."
+}
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    throw "Git is required to prepare third-party dependencies."
+}
 
+Push-Location -LiteralPath $PSScriptRoot
+try {
+    Initialize-Dependency "glfw" `
+        "https://github.com/glfw/glfw.git" `
+        "a74efa0d5628b74adc0426af4c5710e287fa7c2c" "CMakeLists.txt"
+    Initialize-Dependency "glm" `
+        "https://github.com/g-truc/glm.git" `
+        "0af55ccecd98d4e5a8d1fad7de25ba429d60e863" "glm/glm.hpp"
+    Initialize-Dependency "tinyxml2" `
+        "https://github.com/leethomason/tinyxml2.git" `
+        "321ea883b7190d4e85cae5512a12e5eaa8f8731f" "tinyxml2.cpp"
+    Initialize-Dependency "tinyobjloader" `
+        "https://github.com/tinyobjloader/tinyobjloader.git" `
+        "2945a967c5303b2c8c14174117c45f3302591150" "tiny_obj_loader.h"
+    Initialize-Dependency "stb" `
+        "https://github.com/nothings/stb.git" `
+        "003501f6d7a8668ce8b6d875e34dd97ad0d5d5b5" "stb_image.h"
+
+    Write-Host "[build] Configuring $Configuration..."
+    Invoke-Checked cmake @("--preset", "windows-msvc")
+
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio/Installer/vswhere.exe"
+    if (-not (Test-Path -LiteralPath $vswhere)) {
+        throw "vswhere.exe was not found. Install Visual Studio 2022 C++ Build Tools."
+    }
+    $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild `
+        -find "MSBuild\**\Bin\amd64\MSBuild.exe" | Select-Object -First 1
+    if (-not $msbuild) {
+        throw "MSBuild was not found. Install Visual Studio 2022 C++ Build Tools."
+    }
+
+    $msbuildArguments = @(
+        "build/windows-msvc/cpu_path_tracer.vcxproj",
+        "/p:Configuration=$Configuration", "/p:Platform=x64",
+        "/m:1", "/nr:false", "/v:minimal")
+    if ($Rebuild) {
+        $msbuildArguments += "/t:Rebuild"
+    }
+    Invoke-Checked $msbuild $msbuildArguments
+
+    $executable = Join-Path $PSScriptRoot "build/windows-msvc/$Configuration/cpu_path_tracer.exe"
+    Write-Host "[build] Done: $executable"
+}
+finally {
+    Pop-Location
+}

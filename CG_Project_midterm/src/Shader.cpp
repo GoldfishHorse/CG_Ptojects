@@ -17,8 +17,9 @@ void Shader::shadeModel(Model &model) const
 		{
 			Vec3f lightDir = (Vec3f)(this->light.Position) - model.vertices.at(face.vIdx.at(i)).position;
 			D3DXVec3Normalize(&lightDir, &lightDir);
-			const Vec3f normal = (!face.vnIdx.empty() && face.vnIdx.at(i) >= 0) ? model.normals.at(face.vnIdx.at(i))
-																			   : face.normal;
+			const Vec3f normal = (i < face.vnIdx.size() && face.vnIdx.at(i) < model.normals.size())
+				? model.normals.at(face.vnIdx.at(i))
+				: face.normal;
 			const FLOAT cosine = D3DXVec3Dot(&lightDir, &normal);
 			if (cosine > 0.0) {
 				face.color += kd * cosine * (Color)(this->light.Diffuse);

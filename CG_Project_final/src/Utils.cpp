@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <random>
 #include <numeric>
+#include <atomic>
+#include <cctype>
 
 Point3f cwiseMax(const std::initializer_list<Point3f>& vecs) {    
     return std::accumulate(vecs.begin(), vecs.end(), POINT_LOWEST, 
@@ -24,7 +26,11 @@ Point3f cwiseMin(const std::initializer_list<Point3f>& vecs) {
 std::string stringToLower(const std::string &s)
 {
     std::string ret;
-    std::transform(s.cbegin(), s.cend(), std::back_inserter(ret), ::tolower);
+    ret.reserve(s.size());
+    std::transform(s.cbegin(), s.cend(), std::back_inserter(ret),
+        [](const unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
     return ret;
 }
 
@@ -70,17 +76,25 @@ std::vector<Vec3f> yAxisFilp(const std::vector<Vec3f>& arr, const size_t width, 
 }
 
 
+namespace {
+std::mt19937& randomEngine()
+{
+    static std::atomic<std::uint32_t> seedCounter{0};
+    thread_local std::mt19937 engine{0x9e3779b9U + seedCounter.fetch_add(1)};
+    return engine;
+}
+}
+
 float random01 () {
-    static std::default_random_engine e;
-    static std::uniform_real_distribution<float> d(0.f, 1.f);
-    return d(e);
+    thread_local std::uniform_real_distribution<float> distribution(0.0f, 1.0f);
+    return distribution(randomEngine());
 }
 
 size_t randomInteger (const size_t low , const size_t high )
 {
-    static std::default_random_engine e;
+    ASSERT(low < high, "Invalid random integer range [%zu, %zu).", low, high);
     std::uniform_int_distribution<size_t> d(low, high - 1);
-    return d(e);
+    return d(randomEngine());
 }
 
 size_t randomInteger (const size_t high ) 
@@ -151,11 +165,10 @@ void BilateralFilter::applyBilateralFilter(
 
     /*  error C3016: “y”: OpenMP“for”语句中的索引变量必须是有符号的整型 */
     #pragma omp parallel for
-    for (ssize_t y = 0; y < static_cast<ssize_t>(height); ++y) {
-        #pragma omp parallel for
-        for (ssize_t x = 0; x < static_cast<ssize_t>(width); ++x) {
-            frameBuffer[y * width + x] = bilateralFilterPixel(tempBuffer, x, y);
-        }
+    for (ssize_t index = 0; index < static_cast<ssize_t>(width * height); ++index) {
+        const size_t x = static_cast<size_t>(index) % width;
+        const size_t y = static_cast<size_t>(index) / width;
+        frameBuffer[static_cast<size_t>(index)] = bilateralFilterPixel(tempBuffer, x, y);
     }
     return;
 }

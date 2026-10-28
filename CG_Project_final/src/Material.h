@@ -92,7 +92,7 @@ public:
     }
 
     /* 初始化为全 0 (黑色) 图像 */
-    void init(const size_t width, const size_t height);
+    void init(const size_t imageWidth, const size_t imageHeight);
     
     inline size_t calculateIndex(const size_t x, const size_t y) const 
     {
@@ -131,18 +131,18 @@ class Texture
 {
 public:
     Texture() = delete;
-    Texture(const std::string &filePath)
-        : filePath(filePath), image(filePath)
+    Texture(const std::string &path)
+        : filePath(path), image(path)
     {
-        ASSERT(std::filesystem::exists(filePath), "Invalid texture path for %s !", filePath.c_str());
-        ASSERT(!image.empty(), "Failed to load texture %s!", filePath.c_str());
+        ASSERT(std::filesystem::exists(path), "Invalid texture path for %s !", path.c_str());
+        ASSERT(!image.empty(), "Failed to load texture %s!", path.c_str());
     }
     ~Texture() = default;
 
-    bool loadFromFile(const std::string &filePath)
+    bool loadFromFile(const std::string &path)
     {
-        this->filePath = filePath;
-        return this->image.loadFromFile(filePath);
+        this->filePath = path;
+        return this->image.loadFromFile(path);
     }
     Point3f getColorAt(const Vec2f &coordinate) const 
     { 

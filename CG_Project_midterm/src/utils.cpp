@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <cctype>
 
 /* https://zhuanlan.zhihu.com/p/426939341 */
 std::vector<std::string> stringSplit(const std::string &str, const char delim)
@@ -37,8 +38,8 @@ Color clampColor(const Color &color)
     using std::clamp;
     return Color{
         clamp(color.r, 0.0f, 1.0f),
-        clamp(color.b, 0.0f, 1.0f),
         clamp(color.g, 0.0f, 1.0f),
+        clamp(color.b, 0.0f, 1.0f),
         clamp(color.a, 0.0f, 1.0f)};
 }
 
@@ -127,6 +128,10 @@ INT saveImage(const char *filename, const Color *data, INT width, INT height)
 std::string stringToLower(const std::string &s)
 {
     std::string ret;
-    std::transform(s.cbegin(), s.cend(), std::back_inserter(ret), ::tolower);
+    ret.reserve(s.size());
+    std::transform(s.cbegin(), s.cend(), std::back_inserter(ret),
+        [](const unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
     return ret;
 }

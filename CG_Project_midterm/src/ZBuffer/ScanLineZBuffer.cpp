@@ -48,7 +48,8 @@ void ScanLineZBuffer::constructTable(const Model &model)
 			if (p1.y < p2.y)
 				std::swap(p1, p2);
 
-			classifiedEdgeTable[(size_t)floor(p1.y)].push_back(
+			const INT startY = std::clamp((INT)floor(p1.y), 0, height - 1);
+			classifiedEdgeTable[(size_t)startY].push_back(
 				ClassifiedEdge{
 					.x = p1.x, 
 					.dx = -(floor(p1.x) - floor(p2.x)) / (floor(p1.y) - floor(p2.y)),
@@ -59,7 +60,9 @@ void ScanLineZBuffer::constructTable(const Model &model)
 
 		/* 构建分类多边形表 */
 		const Point3f &pos = model.vertices[face.vIdx[0]].position;
-		classifiedPolygonTable[(size_t)floor(model.bboxFace[i].maxPoint.y)].push_back(
+		const INT polygonStartY = std::clamp(
+			(INT)floor(model.bboxFace[i].maxPoint.y), 0, height - 1);
+		classifiedPolygonTable[(size_t)polygonStartY].push_back(
 			ClassifiedPolygon{
 				.plane = Plane{
 					/* 平面的点法式方程
@@ -122,8 +125,11 @@ void ScanLineZBuffer::addActiveEdge(const INT y, const ClassifiedPolygon &active
 	{
 		ActiveEdge activeEdge{
 			.xl = it->x,
+			.xr = 0.0f,
 			.dxl = it->dx,
+			.dxr = 0.0f,
 			.dyl = it->dy,
+			.dyr = 0,
 			.zl = -(activePolygon.plane.d + activePolygon.plane.a * (it->x) + activePolygon.plane.b * y) / (activePolygon.plane.c),
 			.dzx = -(activePolygon.plane.a / activePolygon.plane.c),
 			.dzy = activePolygon.plane.b / activePolygon.plane.c,
@@ -220,12 +226,17 @@ void ScanLineZBuffer::scan(const Model &model)
 		}
 		for (ActiveEdge &e : activeEdgeTable)
 		{
-			for (INT x = (INT)std::floor(e.xl); x <= (INT)std::ceil(e.xr); ++x)
+			const INT beginX = std::clamp((INT)std::ceil(e.xl), 0, width - 1);
+			const INT endX = std::clamp((INT)std::floor(e.xr), 0, width - 1);
+			for (INT x = beginX; x <= endX; ++x)
 			{
-				if (e.zl > zBuffer.at((size_t)x))
+				/* Depth changes along the scanline; using e.zl for every pixel
+				   produces a constant-depth strip and incorrect visibility. */
+				const FLOAT z = e.zl + (static_cast<FLOAT>(x) - e.xl) * e.dzx;
+				if (z > zBuffer.at((size_t)x))
 				{
 					/* 更新 zBuffer */
-					zBuffer.at(x) = e.zl;
+					zBuffer.at((size_t)x) = z;
 					frameBuffer.at(y * width + x) = model.faces.at(e.faceIdx).color;
 				}
 			}

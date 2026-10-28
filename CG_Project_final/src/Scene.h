@@ -14,24 +14,24 @@
 class Scene {
 public:
     Scene() = default;
-    Scene(const size_t width, const size_t height, const std::string& name = "", const Vec3f& ambient = defaultAmbient)
-        : width(width), height(height), name(name), ambient(ambient), frameBuffer(width, height)
+    Scene(const size_t imageWidth, const size_t imageHeight, const std::string& sceneName = "", const Vec3f& background = defaultAmbient)
+        : width(imageWidth), height(imageHeight), name(sceneName), ambient(background), frameBuffer(imageWidth, imageHeight)
         {}
 
     float getAspect () const 
         { return static_cast<float>(width) / static_cast<float>(height); }
-    Ray getRay(const size_t x, const size_t y, const float noiseMap = 0.5f ) const;
+    Ray getRay(const size_t x, const size_t y, const float jitterStrength = 1.0f) const;
     bool hit(Ray &ray, Intersection &intersection) const 
         { return this->model.hit(ray, intersection); }
     void initFrameBuffer() {
         this->frameBuffer.init(width, height);
         return;
     }
-    void init(const size_t width, const size_t height, const Vec3f& ambient = defaultAmbient)
+    void init(const size_t imageWidth, const size_t imageHeight, const Vec3f& background = defaultAmbient)
     {
-        this->width = width;
-        this->height = height;
-        this->ambient = ambient;
+        this->width = imageWidth;
+        this->height = imageHeight;
+        this->ambient = background;
         this->initFrameBuffer();
         this->camera.aspect = this->getAspect();
     }
@@ -42,11 +42,11 @@ public:
     /* 相机 */
     PerspectiveCamera camera;
     /* 窗口宽和高 */
-    size_t width, height;
+    size_t width = defaultWidth, height = defaultHeight;
     /* 场景名称 */
     std::string name;
     /* 场景的环境光 */
-    Vec3f ambient;
+    Vec3f ambient = defaultAmbient;
     /* 帧缓存, 在路径追踪的规程中更新 */
     Image frameBuffer;
     

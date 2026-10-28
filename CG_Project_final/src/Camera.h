@@ -29,12 +29,13 @@ public:
 
 class PerspectiveCamera : public Camera {
 public:
-    float fovy;
-    float aspect;
-    float znear;
-    float zfar;
+    float fovy = defaultFovy;
+    float aspect = 16.0f / 9.0f;
+    float znear = 0.1f;
+    float zfar = 1e4f;
 
-    static constexpr float defaultFovy = glm::pi<float>() / 4.f;
+    /* Stored in degrees because scene configuration files use degrees. */
+    static constexpr float defaultFovy = 45.0f;
 
 public:
     PerspectiveCamera() = default;
@@ -44,7 +45,7 @@ public:
     ~PerspectiveCamera() = default;
 
     glm::mat4 getProjectionMatrix() const override {
-        return glm::perspective(fovy, aspect, znear, zfar);
+        return glm::perspective(glm::radians(fovy), aspect, znear, zfar);
     }
 
 };

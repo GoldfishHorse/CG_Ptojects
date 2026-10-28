@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <initializer_list>
+#include <vector>
 
 
 inline Point3f cwiseMax(const Point3f &v1, const Point3f &v2)
@@ -104,7 +105,7 @@ size_t randomInteger (const size_t high );
 /*  对像素进行 gamma 矫正
     https://en.wikipedia.org/wiki/Gamma_correction */
 inline Point3f gammaCorrection(const Point3f& color, const float gamma = 1.f / 2.2f)
-    { return glm::pow(color, Point3f{gamma}); }
+    { return glm::pow(glm::max(color, Point3f{0.0f}), Point3f{gamma}); }
 
 
 /* 计时器类 */
@@ -117,6 +118,7 @@ public:
 
     void reset() {
         totalTime = 0.0f;
+        elapsedTime = 0.0f;
         isRunning = false;
     }
 
@@ -140,12 +142,12 @@ class BilateralFilter {
 public:
     BilateralFilter() = default;
     BilateralFilter(
-        const size_t width, const size_t height,
-        const int radius = defaultRadius,
-        const float sigmaSpace = defaultSigmaSpace, 
-        const float sigmaColor = defaultSigmaColor
-    ) : width(width), height(height), radius(radius),
-        sigmaSpace(sigmaSpace), sigmaColor(sigmaColor) 
+        const size_t imageWidth, const size_t imageHeight,
+        const int filterRadius = defaultRadius,
+        const float spatialSigma = defaultSigmaSpace,
+        const float colorSigma = defaultSigmaColor
+    ) : width(imageWidth), height(imageHeight), radius(filterRadius),
+        sigmaSpace(spatialSigma), sigmaColor(colorSigma)
     {}
 
     ~BilateralFilter() = default;
@@ -161,14 +163,14 @@ public:
         return;
     }
     void init(
-        const size_t width, const size_t height,
-        const int radius = defaultRadius,
-        const float sigmaSpace = defaultSigmaSpace, 
-        const float sigmaColor = defaultSigmaColor)
+        const size_t imageWidth, const size_t imageHeight,
+        const int filterRadius = defaultRadius,
+        const float spatialSigma = defaultSigmaSpace,
+        const float colorSigma = defaultSigmaColor)
     {
-        this->width = width;  this->height = height;
-        this->radius = radius; 
-        this->sigmaSpace = sigmaSpace; this->sigmaColor = sigmaColor;
+        this->width = imageWidth;  this->height = imageHeight;
+        this->radius = filterRadius;
+        this->sigmaSpace = spatialSigma; this->sigmaColor = colorSigma;
     }
 
 public:

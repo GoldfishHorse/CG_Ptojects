@@ -26,12 +26,11 @@ void SceneViewer::renderFuncCallBack() {
         static_cast<GLfloat>(this->h), 
         -1, 1);
     glRasterPos2i(0, 0);
-    this->writeLock.lock();
+    const std::lock_guard<std::mutex> lock(this->writeLock);
     glDrawPixels(
         static_cast<GLsizei>(this->w), 
         static_cast<GLsizei>(this->h), 
         GL_RGB, GL_FLOAT, data);
-    this->writeLock.unlock();
 }
 
 
@@ -69,7 +68,14 @@ void SceneViewer::viewScene() {
     
 
     glfwMakeContextCurrent(window);
-    gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+        LOG_ERROR("Failed to initialize GLAD.");
+        this->windowOpened = false;
+        renderThread.join();
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        return;
+    }
 
 
     while (!glfwWindowShouldClose(window)) {
@@ -100,9 +106,8 @@ void SceneViewer::gammaCorrection(const float gamma)
 
 void SceneViewer::updateFrame()
 {
-    this->writeLock.lock();
+    const std::lock_guard<std::mutex> lock(this->writeLock);
     this->frame = this->pathTracer->getFrameBufferData();
     this->gammaCorrection();
-    this->writeLock.unlock();
     return;
 }

@@ -321,7 +321,9 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 INT UI::mainWindow(Model &model, const Shader &shader,
                    HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow)
 {
-    WNDCLASS wc = {0};
+	(void)hPrevInstance;
+	(void)lpCmdLine;
+	WNDCLASS wc{};
     wc.lpfnWndProc = windowProc;
     wc.hInstance = hInstance;
     wc.lpszClassName = _T("WindowClass");

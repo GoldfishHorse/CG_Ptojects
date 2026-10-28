@@ -1,10 +1,3 @@
-<div align="center">
-<font size = 6 color = "black" face = "KaiTi"><b>贺俊哲</b></font><br>
-<font size = 4 color = "black" face = "KaiTi">学号: 22421256</font><br>
-<font size = 4 color = "black" face = "KaiTi">邮箱: hejunzhe@zju.edu.cn</font><br>
-</div>
-
-
 [TOC]
 
 # 简介
@@ -82,23 +75,27 @@ mkdir build
 cmake -G "Visual Studio 17 2022" -A x64 -Bbuild .
 cmake --build build --config Release --parallel 16
 ```
-在构建完成后运行 `project.exe` 即可 （路径一般为 `.\build\Release\project.exe` 或者 `.\build\project.exe`）。
+在构建完成后运行 `cpu_path_tracer.exe` 即可 （路径一般为 `.\build\Release\cpu_path_tracer.exe` 或者 `.\build\cpu_path_tracer.exe`）。
 
-`project.exe` 的运行参数如下：
+`cpu_path_tracer.exe` 的运行参数如下：
 ```
-$ .\project.exe --help
+$ .\cpu_path_tracer.exe --help
 
-Usage: main [options]
-Options:
-    --objFilePath, -obj <path>        Path to the .obj file.
-    --configFilePath, -config <path>  Path to the config (.xml) file.
-    --mtlFilePath, -mtl <path>        Path to the .mtl file.
-    --sceneName, -n <name>            Name of the scene.
-    --help, -h                        Print this help message.
+Scene options:
+  --obj, -obj <path>        OBJ geometry file
+  --config, -config <path>  XML render configuration
+  --mtl, -mtl <path>        MTL material file
+  --name, -n <name>         Scene/window name
+
+Render options:
+  --headless                Render without opening a window
+  --iterations, -i <count>  Iterations for headless rendering
+  --output, -o <path>       Headless image output path
+  --help, -h                Show this help
 ```
 示例使用：
 ```shell
-.\project.exe -obj .\example-scenes-cg24\bathroom2\bathroom2.obj -config .\example-scenes-cg24\bathroom2\bathroom2.xml -mtl .\example-scenes-cg24\bathroom2\bathroom2.mtl -n bathroom2
+.\cpu_path_tracer.exe -obj .\example-scenes-cg24\bathroom2\bathroom2.obj -config .\example_configs\bathroom2.xml -mtl .\example-scenes-cg24\bathroom2\bathroom2.mtl -n bathroom2
 ```
 
 ## Linux 平台构建
@@ -118,7 +115,7 @@ sudo apt-get install -y libxi-dev
 cmake -G "Unix Makefiles" -Bbuild . -DCMAKE_BUILD_TYPE=RELEASE
 cmake --build build --parallel 16
 ```
-运行 `./build/project` 的方式如前述。
+运行 `./build/cpu_path_tracer` 的方式如前述。
 
 ## 其它
 
@@ -145,7 +142,7 @@ cmake --build build --parallel 16
 <light mtlname="light3" radiance="20,20,20"/>
 <light mtlname="light4" radiance="10,10,10"/>
 
-<pathtrace lightsamples="3" maxdepth="3" filterfrequence="0" saveimgfrequence="100" saveimgpath="./result/veach-mis"/>
+<pathtrace lightsamples="3" maxdepth="3" filterfrequency="0" saveimgfrequency="100" saveimgpath="./result/veach-mis"/>
 ```
 其中参数包括:
 + `camera` 相机
@@ -165,8 +162,8 @@ cmake --build build --parallel 16
 + `pathtrace`   光线追踪相关参数
     - `lightsamples`:   在光线追踪过程中, 对每个像素进行直接光照采样的次数。该参数会对程序运行效率产生较大影响;
     - `maxdepth`:   对单个像素进行光线追踪的最大递归层数;
-    - `filterfrequence`:    每多少轮迭代进行一次双边滤波, 0 表示不进行滤波。双边滤波可能会损失一些高频信息。
-    - `saveimgfrequence`:   每多少轮迭代保存一次渲染结果。同时保存过程中对像素进行了 gamma 矫正。0 表示不保存。
+    - `filterfrequency`:    每多少轮迭代进行一次双边滤波, 0 表示不进行滤波。双边滤波可能会损失一些高频信息。
+    - `saveimgfrequency`:   每多少轮迭代保存一次渲染结果。同时保存过程中对像素进行了 gamma 矫正。0 表示不保存。
     + `saveimgpath`:    保存图片的路径。
 
 ## 3D 模型
@@ -288,6 +285,7 @@ classDiagram
 
 
 # 运行结果
+
 ## bathroom2
 <div align="center">
 <img src = ".\result\bathroom2\5000.png">

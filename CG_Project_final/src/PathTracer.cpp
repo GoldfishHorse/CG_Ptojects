@@ -8,16 +8,16 @@ PathTracer::PathTracer(
     Scene *scene,
     const size_t lightSamples,
     const size_t maxDepth,
-    const size_t filterFrequence,
-    const size_t saveImgFrequence ,
+    const size_t filterFrequency,
+    const size_t saveImgFrequency,
     const std::string& saveImgPath
 )
     : scene(scene),
       iterCnt(0),
       lightSamples(lightSamples),
       maxDepth(maxDepth),
-      filterFrequence(filterFrequence),
-      saveImgFrequence(saveImgFrequence),
+      filterFrequency(filterFrequency),
+      saveImgFrequency(saveImgFrequency),
       saveImgPath(saveImgPath)
 {
     if (scene != nullptr)
@@ -50,168 +50,134 @@ Vec3f PathTracer::BRDFImportanceSampling(const Vec3f &direction, bool isSpecular
     return normalize(sample.x * right + sample.y * direction + sample.z * front);
 }
 
-Ray PathTracer::nextRaySampling(Ray &ray, const Intersection &intersection)
+PathTracer::BounceSample PathTracer::nextRaySampling(
+    const Ray &ray, const Intersection &intersection)
 {
     const Material &material = *(intersection.face->material);
-    Ray ret;
+    const Point2f texcoord = intersection.getTexCoord();
+    Vec3f normal = intersection.normal;
+    if (isZeroVec(normal))
+        return {};
 
+    const bool entering = glm::dot(ray.direction, normal) < 0.0f;
+    const Vec3f orientedNormal = entering ? normal : -normal;
 
-    // if has Refraction
-    if (material.Ni > 1.f + DISTANCE_EPS)
+    /* Dielectric interface: sample reflection/refraction according to Fresnel.
+       The event probability is the Fresnel weight, so it cancels from the
+       Monte Carlo throughput for an ideal interface. */
+    if (material.Ni > 1.0f + DISTANCE_EPS &&
+        glm::compMax(material.Tr) > DISTANCE_EPS)
     {
-        float n1, n2;
-        float cosIn = glm::dot(ray.direction, intersection.normal);
-        Vec3f normal;
-        if (cosIn > 0)
+        const float n1 = entering ? 1.0f : material.Ni;
+        const float n2 = entering ? material.Ni : 1.0f;
+        const float fresnel = calculateFresnel(
+            glm::dot(-ray.direction, orientedNormal), n1, n2);
+        const auto refracted = ray.refract(orientedNormal, n1 / n2);
+
+        if (!refracted.has_value() || random01() < fresnel)
         {
-            // out of glass
-            normal = -intersection.normal;
-            n1 = material.Ni;
-            n2 = 1.f;
-        }
-        else
-        {
-            // in to the glass
-            normal = intersection.normal;
-            n1 = 1.f;
-            n2 = material.Ni;
+            const Vec3f direction = ray.reflect(orientedNormal);
+            const Vec3f reflectance = glm::compMax(material.Ks) > DISTANCE_EPS
+                ? material.Ks : Vec3f{1.0f};
+            return {Ray(intersection.point + orientedNormal * DISTANCE_EPS,
+                        direction, Ray::RayType::SPECULAR),
+                    reflectance, true};
         }
 
-
-        if (calculateFresnel(cosIn, n1, n2) < random01())
-        {
-            if (auto direction = ray.refract(normal, n1 / n2); direction.has_value())
-            {
-                ret = Ray(intersection.point, direction.value(), Ray::RayType::TRANSMISSION);
-            }
-            else
-            {
-                // only specular for refraction materia
-                ret = Ray(intersection.point, ray.reflect(normal), Ray::RayType::SPECULAR);
-            }
-            return ret;
-        }
+        return {Ray(intersection.point - orientedNormal * DISTANCE_EPS,
+                    refracted.value(), Ray::RayType::TRANSMISSION),
+                material.Tr, true};
     }
 
-    // reflection
-    const float kdNorm = static_cast<float>(material.getDiffusion(intersection.getTexCoord()).length()),
-                ksNorm = static_cast<float>(material.getSpecularity(intersection.getTexCoord()).length());
-    const bool isSpecular = random01() > kdNorm / (kdNorm + ksNorm);
-    if (isSpecular)
+    const Vec3f kd = material.getDiffusion(texcoord);
+    const Vec3f ks = material.getSpecularity(texcoord);
+    const float kdWeight = std::max(glm::compMax(kd), 0.0f);
+    const float ksWeight = std::max(glm::compMax(ks), 0.0f);
+    const float weightSum = kdWeight + ksWeight;
+    if (weightSum <= DISTANCE_EPS)
+        return {};
+
+    const float diffuseProbability = kdWeight / weightSum;
+    if (random01() < diffuseProbability)
     {
-        ret = Ray(
-            intersection.point,
-            BRDFImportanceSampling(
-                ray.reflect(intersection.normal), true, material.Ns),
-            Ray::RayType::SPECULAR);
-    }
-    else
-    {
-        ret = Ray(
-            intersection.point,
-            BRDFImportanceSampling(intersection.normal),
-            Ray::RayType::DIFFUSE);
+        const Vec3f direction = BRDFImportanceSampling(orientedNormal);
+        return {Ray(intersection.point + orientedNormal * DISTANCE_EPS,
+                    direction, Ray::RayType::DIFFUSE),
+                kd / diffuseProbability, true};
     }
 
-    return ret;
+    const float specularProbability = 1.0f - diffuseProbability;
+    const Vec3f direction = BRDFImportanceSampling(
+        ray.reflect(orientedNormal), true, std::max(material.Ns, 0.0f));
+    const float phongWeight = (material.Ns + 2.0f) / (material.Ns + 1.0f) *
+                              std::max(glm::dot(orientedNormal, direction), 0.0f);
+    return {Ray(intersection.point + orientedNormal * DISTANCE_EPS,
+                direction, Ray::RayType::SPECULAR),
+            ks * (phongWeight / specularProbability), true};
 }
 
 Vec3f PathTracer::traceRay(Ray &ray, size_t depth)
 {
-    Vec3f ret;
     if (Intersection intersection; this->scene->hit(ray, intersection))
     {
         const Material& material = *intersection.face->material;
-        const Point2f texcoord = intersection.getTexCoord();
+        /* With next-event estimation, diffuse BSDF paths must not count an
+           emitter again or the same light transport path is double counted. */
+        const Vec3f emitted = (depth == 0 || ray.type != Ray::RayType::DIFFUSE)
+            ? material.getEmission() : Vec3f{0.0f};
+        if (depth >= this->maxDepth || material.emissive)
+            return emitted;
 
-        if (depth >= this->maxDepth)
-        {
-            /* 达到最大递归深度 */
-            ret = material.Ke + material.getAmbience(texcoord) * this->scene->ambient;
-        } else {
-            Vec3f indirectLight, directLight;
+        const Vec3f direct = directLight(intersection);
+        const BounceSample bounce = nextRaySampling(ray, intersection);
+        if (!bounce.valid)
+            return emitted + direct;
 
-            Ray nextRay = this->nextRaySampling(ray, intersection);
-            switch (nextRay.type)
-            {
-                case Ray::RayType::DIFFUSE:
-                    indirectLight = material.getDiffusion(texcoord) * 
-                                    this->traceRay(nextRay, depth + 1);
-                    break;
-                
-                case Ray::RayType::SPECULAR:
-                    indirectLight = material.getSpecularity(texcoord) * 
-                                    this->traceRay(nextRay, depth + 1);
-                    break;
-                
-                case Ray::RayType::TRANSMISSION:
-                    indirectLight = material.Tr * this->traceRay(nextRay, depth + 1);
-                    break;
-                default:
-                    indirectLight = Vec3f{0};
-                    break;
-            }
-
-            
-            if (!(material.emissive))
-                directLight = this->directLight(ray, intersection);
-            else 
-                directLight = Vec3f{0};
-
-            ret =   material.Ke + 
-                    directLight + 
-                    indirectLight + 
-                    material.getAmbience(texcoord) * this->scene->ambient;
-
-        }
-    } else {
-        ret = this->scene->ambient;
+        Ray nextRay = bounce.ray;
+        return emitted + direct + bounce.throughput * traceRay(nextRay, depth + 1);
     }
-
-    return ret;
+    return this->scene->ambient;
 }
 
 
-Vec3f PathTracer::directLight(Ray &ray, const Intersection &intersection) {
+Vec3f PathTracer::directLight(const Intersection &intersection) {
     Vec3f ret = Vec3f{0};
     const Material& material = *intersection.face->material;
     const Vec3f d = material.getDiffusion(intersection.getTexCoord());
-    if ( d != Vec3f{0} ) {
+    if (lightSamples > 0 && glm::compMax(d) > DISTANCE_EPS) {
         /* 对场景中的光源进行随机采样 */
         for (size_t _ = 0; _ < lightSamples; ++_) 
-        {   
-            Point3f rgbLocal = Point3f{0};
-            const LightArea& lightArea = *(this->scene->model.getRandomLightArea());
-            const float areaSize = lightArea.area;
-            // const Face& lightFace = *(lightArea.getRandomFaceByWeights());
-            const Face& lightFace = *(lightArea.getRandomFace());
-            const Point3f lightPoint = lightFace.randomSample();
-            const Vec3f lightDirection = lightPoint - intersection.point;
-            Ray lightRay = Ray(
-                intersection.point, 
-                lightDirection
-            );
+        {
+            float pdfArea = 0.0f;
+            const Face* lightFace = this->scene->model.sampleLight(pdfArea);
+            if (lightFace == nullptr || pdfArea <= 0.0f)
+                break;
 
-            if ( Intersection tmpInst;
-                    this->scene->hit(lightRay, tmpInst)  &&  
-                    // tmpInst.face == intersection.face
-                    vecClose(tmpInst.point, intersection.point) )
-            {
-                const Vec3f lightDirNormalized = normalize(lightDirection);
-                const float cos_i = std::max(glm::dot(intersection.normal, lightDirNormalized), 0.0f);
-                const float cos_o = std::max(glm::dot(-lightDirNormalized, lightFace.getNormal()), 0.0f);
-                const float f0 = cos_i * cos_o / (glm::pow2(lightDirection.length()));
-                const Vec3f energy = f0 * areaSize * (lightArea.material->Ke) / lightSamples;
-                
-                const float cos = glm::dot(lightDirNormalized, intersection.normal);
-                if (cos > 0.f) {
-                    rgbLocal += cos * d * energy / glm::pi<float>();
-                }
-            }
-            
-            ret += rgbLocal;
+            const Point3f lightPoint = lightFace->randomSample();
+            const Vec3f toLight = lightPoint - intersection.point;
+            const float distanceSquared = glm::dot(toLight, toLight);
+            if (distanceSquared <= glm::pow2(DISTANCE_EPS))
+                continue;
+
+            const float distance = std::sqrt(distanceSquared);
+            const Vec3f wi = toLight / distance;
+            const Vec3f surfaceNormal = intersection.normal;
+            const float cosSurface = std::max(glm::dot(surfaceNormal, wi), 0.0f);
+            const float cosLight = std::max(glm::dot(lightFace->getNormal(), -wi), 0.0f);
+            if (cosSurface <= 0.0f || cosLight <= 0.0f)
+                continue;
+
+            Ray shadowRay(intersection.point + surfaceNormal * DISTANCE_EPS, wi);
+            shadowRay.tmax = distance - 2.0f * DISTANCE_EPS;
+            Intersection blocker;
+            if (shadowRay.tmax > shadowRay.tmin && this->scene->hit(shadowRay, blocker))
+                continue;
+
+            const Vec3f emission = lightFace->material->getEmission();
+            ret += (d / glm::pi<float>()) * emission *
+                   (cosSurface * cosLight / (distanceSquared * pdfArea));
         }
-        ret = glm::clamp(ret, Vec3f{0.f}, Vec3f{1.f});
+        ret /= static_cast<float>(lightSamples);
     }            
 
     return ret;
@@ -229,22 +195,18 @@ void PathTracer::renderScene()
     this->timer.start();
 
     /* error C3016: “y”: OpenMP“for”语句中的索引变量必须是有符号的整型 */
-    #pragma omp parallel for num_threads(20)
-    for (ssize_t y = 0; y < static_cast<ssize_t>(this->scene->height); ++y)
+    const size_t pixelCount = this->scene->width * this->scene->height;
+    #pragma omp parallel for schedule(dynamic, 64)
+    for (ssize_t index = 0; index < static_cast<ssize_t>(pixelCount); ++index)
     {
-        #pragma omp parallel for num_threads(20)
-        for (ssize_t x = 0; x <  static_cast<ssize_t>(this->scene->width); ++x)
-        {
-            /* 对当前坐标进行光线追踪 */
-            Ray ray = this->scene->getRay(x, y);
-            Vec3f color = traceRay(ray, 0);
-
-            /* 更新当前坐标的帧缓存 */
-            const size_t idx = this->scene->frameBuffer.calculateIndex(x, y);
-            this->scene->frameBuffer[idx] = Vec3f{
-                this->scene->frameBuffer[idx] * (iterCnt - 1) + color
-            } / iterCnt;
-        }
+        const size_t pixelIndex = static_cast<size_t>(index);
+        const size_t x = pixelIndex % this->scene->width;
+        const size_t y = pixelIndex / this->scene->width;
+        Ray ray = this->scene->getRay(x, y);
+        const Vec3f color = traceRay(ray, 0);
+        this->scene->frameBuffer[pixelIndex] =
+            (this->scene->frameBuffer[pixelIndex] * static_cast<float>(iterCnt - 1) + color) /
+            static_cast<float>(iterCnt);
     }
 
 
@@ -259,7 +221,7 @@ void PathTracer::renderScene()
         this->timer.getElapsedTime(), 
         this->timer.getTotalTime());
     
-    if (filterFrequence > 0 && (this->iterCnt) % filterFrequence == 0) 
+    if (filterFrequency > 0 && (this->iterCnt) % filterFrequency == 0)
     {
         LOG_INFO("Applying Bilateral Filter...");
         this->bilateralFilter.applyBilateralFilter(
@@ -267,7 +229,7 @@ void PathTracer::renderScene()
         );
     }
 
-    if (saveImgFrequence > 0 && (this->iterCnt) % saveImgFrequence == 0)
+    if (saveImgFrequency > 0 && (this->iterCnt) % saveImgFrequency == 0)
     {
         std::filesystem::path p = 
             std::filesystem::path(this->saveImgPath) / (std::to_string(this->iterCnt) + ".png");

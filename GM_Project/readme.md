@@ -1,11 +1,3 @@
-<div align="center">
-<font size = 6 color = "black" face = "KaiTi"><b>贺俊哲</b></font><br>
-<font size = 4 color = "black" face = "KaiTi">学号: 22421256</font><br>
-<font size = 4 color = "black" face = "KaiTi">浙江大学计算机科学与技术学院 硕士一年级</font><br>
-<font size = 4 color = "black" face = "KaiTi">邮箱: hejunzhe@zju.edu.cn</font><br>
-</div>
-
-
 # 简介
 本项目在给定框架的基础上实现了
 

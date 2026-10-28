@@ -6,4 +6,4 @@
 </camera>
 <scene width="1024" height="1024" ambient="0.2, 0.2, 0.2"/>
 <light mtlname="Light" radiance="34.0, 24.0, 8.0"/>
-<pathtrace lightsamples="3" maxdepth="3" filterfrequence="0" saveimgfrequence="100" saveimgpath="./result/cornell-box"/>
+<pathtrace lightsamples="3" maxdepth="3" filterfrequency="0" saveimgfrequency="100" saveimgpath="./result/cornell-box"/>

@@ -135,7 +135,7 @@ KDTreeHierchialZBuffer  0.061 seconds
 ```
 
 ### ZBufferUI.exe
-`ZBufferCMD.exe` 是一个 GUI 程序, 运行页面如下:
+`ZBufferUI.exe` 是一个 GUI 程序, 运行页面如下:
 <div align = "center">
 <img src = "./figures/ZBufferUI_empty.png" width = "75%">
 </div>
@@ -182,9 +182,8 @@ ZBuffer 菜单可以选择不同的 Z-Buffer 表面剔除算法。
 
 ### 其它说明
 
-+ .obj 模型仅允许三角形或四边形面片, 否则会读取失败。
-+ 对于较大的 .obj 文件 (例如 `Model\bunny.obj`, 共 72027 个顶点、144046 个面), 模型读取的时间可能较长 (本机测试加载 `Model\bunny.obj` 需要 50 秒), 请耐心等待。
-+ 扫描线 Z-Buffer 实现有瑕疵, 某些模型的细节处可能渲染失败, 推测是浮点误差导致。 
++ OBJ 面索引支持 `v`、`v/vt`、`v//vn`、`v/vt/vn` 和负索引; 模型仅允许三角形或四边形面片。
++ 扫描线 Z-Buffer 沿扫描线使用平面深度增量更新像素; 在共享顶点、近水平边和退化多边形附近仍可能受浮点精度与填充规则影响。
 + **DirectX9 仅用于将 ZBuffer 类中的数据发送到窗口, 没有调用涉及 Z-Buffer 的API。**
 
 # 数据结构
@@ -269,6 +268,7 @@ graph TD
 
 
 # 运行结果
+以下数据和图片为课程提交时的原始实验记录，予以保留。
 .obj 数据如下:
 ```PlainText
 .\Model\objInfo.ps1 | Sort-Object -Property Vertices

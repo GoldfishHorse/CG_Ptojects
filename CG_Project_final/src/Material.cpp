@@ -44,10 +44,10 @@ Image::Image(const std::filesystem::path &filePath)
     }
 }
 
-void Image::init(const size_t width, const size_t height)
+void Image::init(const size_t imageWidth, const size_t imageHeight)
 {
-    this->width = width; this->height = height;
-    this->imgData.resize(width * height);
+    this->width = imageWidth; this->height = imageHeight;
+    this->imgData.resize(imageWidth * imageHeight);
     std::fill(this->imgData.begin(), this->imgData.end(), Vec3f{0});
 }
 
@@ -59,14 +59,17 @@ bool Image::loadFromFile(const std::filesystem::path &filePath)
         LOG_ERROR("Image file %s not exist!", filePath.string().c_str());
         ret = false;
     } else {
-        int width, height, channels;
-        int success = stbi_info(filePath.string().c_str(), &width, &height, &channels);
-        if (!success || width * height == 0)
+        int loadedWidth, loadedHeight, channels;
+        int success = stbi_info(filePath.string().c_str(), &loadedWidth, &loadedHeight, &channels);
+        if (!success || loadedWidth * loadedHeight == 0)
         {
             LOG_ERROR("Image file %s is invalid!", filePath.string().c_str());
             ret = false;
         } else {
-            stbi_uc * pImgData = stbi_load(filePath.string().c_str(), &width, &height, &channels, 0);
+            /* Always request RGB output. This also handles grayscale, grayscale+alpha
+               and RGBA sources without using the source channel count as a stride. */
+            stbi_uc * pImgData = stbi_load(
+                filePath.string().c_str(), &loadedWidth, &loadedHeight, &channels, STBI_rgb);
             if (!pImgData)
             {
                 const char *const reason = stbi_failure_reason() ? stbi_failure_reason() : "[Unknown Reason]";
@@ -75,56 +78,22 @@ bool Image::loadFromFile(const std::filesystem::path &filePath)
             }
             else
             {
-                this->width = static_cast<size_t>(width);
-                this->height = static_cast<size_t>(height);
+                this->width = static_cast<size_t>(loadedWidth);
+                this->height = static_cast<size_t>(loadedHeight);
                 LOG_INFO("Load %s succeeds. width: %zu, height: %zu.",
                     filePath.string().c_str(), this->width, this->height);
-
-                if (channels < 3) {
-                    LOG_WARNING("%s is not RGB image!", this->name.c_str());
-                } else {
-                    channels = std::min(3, channels);
-                }
 
                 this->name = filePath.filename().string();
                 
                 this->imgData.resize(this->width * this->height);
-                
-                switch (channels)
+                for (size_t i = 0; i < this->size(); ++i)
                 {
-                    case  3:
-                    {
-                        /* RGB image */
-                        for (size_t i = 0; i < this->size(); ++i)
-                        {
-                            this->imgData.at(i) = 
-                                Point3f{
-                                    static_cast<float>( pImgData[i * 3]    )   ,
-                                    static_cast<float>( pImgData[i * 3 + 1])   ,
-                                    static_cast<float>( pImgData[i * 3 + 2])
-                                } /
-                                255.f;
-                        }
-                        ret = true;
-                        break;
-                    }
-                    case 1:
-                    {
-                        for (size_t i = 0; i < this->size(); ++i)
-                        {
-                            this->imgData.at(i) = Point3f{
-                                static_cast<float>(pImgData[i]) / 255.f
-                            };
-                        }
-                        ret = true;
-                        break;
-                    }
-                    default:
-                    {
-                        LOG_ERROR("Invalid image channels %d for %s.", channels, this->name.c_str());
-                        ret = false;
-                    }
+                    this->imgData.at(i) = Point3f{
+                        static_cast<float>(pImgData[i * 3]),
+                        static_cast<float>(pImgData[i * 3 + 1]),
+                        static_cast<float>(pImgData[i * 3 + 2])} / 255.0f;
                 }
+                ret = true;
 
                 stbi_image_free(pImgData);
             }
@@ -137,24 +106,23 @@ bool Image::loadFromFile(const std::filesystem::path &filePath)
 
 bool Image::writeToFile(const std::filesystem::path& filePath)
 {
-    std::string ext = filePath.extension().string();
-    std::filesystem::path pp = filePath.parent_path();
-    if (pp.is_relative())
-    {
-        pp = std::filesystem::path(PROJECT_SOURCE_DIR) / pp;
-    }
-    if (!std::filesystem::exists(pp))
+    std::filesystem::path outputPath = filePath;
+    if (outputPath.is_relative())
+        outputPath = std::filesystem::path(PROJECT_SOURCE_DIR) / outputPath;
+    const std::string ext = stringToLower(outputPath.extension().string());
+    const std::filesystem::path parent = outputPath.parent_path();
+    if (!parent.empty() && !std::filesystem::exists(parent))
     {   
         bool ret;
         try {
-            ret = std::filesystem::create_directories(pp);
+            ret = std::filesystem::create_directories(parent);
         } catch ( const std::exception& e ) {
-            LOG_ERROR("Create directory %s fails: %s.", pp.string().c_str(), e.what());
-            throw e;
+            LOG_ERROR("Create directory %s fails: %s.", parent.string().c_str(), e.what());
+            throw;
         } 
         if (!ret)
         {
-            LOG_ERROR("Create directory %s fails.", pp.string().c_str());
+            LOG_ERROR("Create directory %s fails.", parent.string().c_str());
         }
     }
     std::vector<unsigned char> dataToWrite = 
@@ -166,7 +134,7 @@ bool Image::writeToFile(const std::filesystem::path& filePath)
     int success = 0;
     if (ext == ".jpg" || ext == ".jpeg")
         success = stbi_write_jpg(
-            filePath.string().c_str(),
+            outputPath.string().c_str(),
             static_cast<int>(this->width),
             static_cast<int>(this->height),
             3,
@@ -175,7 +143,7 @@ bool Image::writeToFile(const std::filesystem::path& filePath)
         );
     else if (ext == ".png")
         success = stbi_write_png(
-            filePath.string().c_str(),
+            outputPath.string().c_str(),
             static_cast<int>(this->width),
             static_cast<int>(this->height),
             3,
@@ -184,7 +152,7 @@ bool Image::writeToFile(const std::filesystem::path& filePath)
         );
     else if (ext == ".bmp")
         success = stbi_write_bmp(
-            filePath.string().c_str(),
+            outputPath.string().c_str(),
             static_cast<int>(this->width),
             static_cast<int>(this->height),
             3,
@@ -192,12 +160,12 @@ bool Image::writeToFile(const std::filesystem::path& filePath)
         );
     else {
         LOG_ERROR("Invalid filePath %s: extension %s is not supported.",
-            filePath.string().c_str(), ext.c_str());
+            outputPath.string().c_str(), ext.c_str());
     }
     if (!success)
     {
         LOG_ERROR("Write image to %s fails: %s", 
-            filePath.string().c_str(), stbi_failure_reason());
+            outputPath.string().c_str(), stbi_failure_reason());
     }
     return bool(success);
 }

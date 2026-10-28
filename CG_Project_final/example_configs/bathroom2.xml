@@ -6,4 +6,4 @@
 </camera>
 <scene width="1280" height="720" ambient="0.2, 0.2, 0.2"/>
 <light mtlname="Light" radiance="125.0,100.0,75.0"/>
-<pathtrace lightsamples="3" maxdepth="6" filterfrequence="0" saveimgfrequence="100" saveimgpath="./result/bathroom2"/>
+<pathtrace lightsamples="3" maxdepth="6" filterfrequency="0" saveimgfrequency="100" saveimgpath="./result/bathroom2"/>

@@ -119,8 +119,14 @@ bool SceneLoader::loadConfigFile(Scene &scene, PathTracer& pathTracer) const
         /* 场景中可能有多个光源 */
         for (; lightNode; lightNode = lightNode->NextSiblingElement("light"))
         {
-            std::string mtlname = std::string(lightNode->Attribute("mtlname"));
-            Vec3f radiance; /* 光源的辐射亮度 */
+            const char* materialName = lightNode->Attribute("mtlname");
+            if (materialName == nullptr)
+            {
+                LOG_WARNING("Ignoring a light without an mtlname attribute.");
+                continue;
+            }
+            std::string mtlname{materialName};
+            Vec3f radiance{0.0f}; /* 光源的辐射亮度 */
             if (const char* rad = lightNode->Attribute("radiance"); rad)
                 radiance = cvtString2Vec3f(std::string(rad));
             if (auto it = scene.model.materials.find(mtlname); it != scene.model.materials.end())
@@ -212,19 +218,23 @@ bool SceneLoader::loadConfigFile(Scene &scene, PathTracer& pathTracer) const
         }
         /*  路径追踪每隔几轮迭代进行一次滤波;
             0 代表不滤波 */
-        if (pathTraceNode->Attribute("filterfrequence"))
+        const char* filterAttribute = pathTraceNode->Attribute("filterfrequency")
+            ? "filterfrequency" : "filterfrequence";
+        if (pathTraceNode->Attribute(filterAttribute))
         {
-            pathTracer.filterFrequence = static_cast<size_t>(
-                pathTraceNode->UnsignedAttribute("filterfrequence"));
-            LOG_INFO("Set PathTrace filter frequence as %zu.", pathTracer.filterFrequence);
+            pathTracer.filterFrequency = static_cast<size_t>(
+                pathTraceNode->UnsignedAttribute(filterAttribute));
+            LOG_INFO("Set PathTrace filter frequency as %zu.", pathTracer.filterFrequency);
         }
         /*  路径追踪每隔几轮迭代保存一次图片
             0 代表不保存 */
-        if (pathTraceNode->Attribute("saveimgfrequence"))
+        const char* saveAttribute = pathTraceNode->Attribute("saveimgfrequency")
+            ? "saveimgfrequency" : "saveimgfrequence";
+        if (pathTraceNode->Attribute(saveAttribute))
         {
-            pathTracer.saveImgFrequence = static_cast<size_t>(
-                pathTraceNode->UnsignedAttribute("saveimgfrequence"));
-            LOG_INFO("Set PathTrace save image frequence as %zu.", pathTracer.saveImgFrequence);
+            pathTracer.saveImgFrequency = static_cast<size_t>(
+                pathTraceNode->UnsignedAttribute(saveAttribute));
+            LOG_INFO("Set PathTrace save image frequency as %zu.", pathTracer.saveImgFrequency);
         }
         /* 保存图片的目录 */
         if (const char* p = pathTraceNode->Attribute("saveimgpath"); p)
@@ -277,17 +287,27 @@ bool SceneLoader::loadOBJFile(Scene & scene) const
     const auto &shapes = objReader.GetShapes();
     const auto &materials = objReader.GetMaterials();
 
+    Material* defaultMaterial = scene.model.fetchMaterial("__default__");
+    if (defaultMaterial == nullptr)
+    {
+        Material material{"__default__"};
+        material.Kd = Vec3f{0.8f};
+        defaultMaterial = scene.model.addMaterial(std::move(material));
+    }
+
     for (const auto &shape : shapes)
     {
         /* 初始化模型的各个面片, 并加入到 scene.model.faces 中 */
         for (size_t f = 0, idxOfs = 0; f < shape.mesh.num_face_vertices.size(); f++)
         {
-            Face face;
-            size_t fvs = shape.mesh.num_face_vertices[f];
-            if (fvs > 3)
+            Face face{};
+            face.material = defaultMaterial;
+            const size_t fvs = shape.mesh.num_face_vertices[f];
+            if (fvs != 3)
             {
-                LOG_WARNING("Non-Triangle face!");
-                fvs = 3;
+                LOG_WARNING("Skipping non-triangle face with %zu vertices.", fvs);
+                idxOfs += fvs;
+                continue;
             }
             for (size_t v = 0; v < fvs; ++v)
             {
@@ -297,19 +317,30 @@ bool SceneLoader::loadOBJFile(Scene & scene) const
                     attrib.vertices[ 3 * idx.vertex_index + 1],
                     attrib.vertices[ 3 * idx.vertex_index + 2],
                 };
-                face.texcoords[v] = Vec2f{
-                    attrib.texcoords [2 * idx.texcoord_index + 0],
-                    attrib.texcoords [2 * idx.texcoord_index + 1]};
-                face.normals[v] = Vec3f{
-                    attrib.normals[3 * idx.normal_index + 0],
-                    attrib.normals[3 * idx.normal_index + 1],
-                    attrib.normals[3 * idx.normal_index + 2]};
+                if (idx.texcoord_index >= 0)
+                {
+                    face.texcoords[v] = Vec2f{
+                        attrib.texcoords[2 * idx.texcoord_index + 0],
+                        attrib.texcoords[2 * idx.texcoord_index + 1]};
+                }
+                if (idx.normal_index >= 0)
+                {
+                    face.normals[v] = Vec3f{
+                        attrib.normals[3 * idx.normal_index + 0],
+                        attrib.normals[3 * idx.normal_index + 1],
+                        attrib.normals[3 * idx.normal_index + 2]};
+                }
             }
+
+            const Vec3f geometricNormal = face.getNormal();
+            for (Vec3f& normal : face.normals)
+                if (isZeroVec(normal))
+                    normal = geometricNormal;
 
             if (!materials.empty())
             {
                 int material_id = shape.mesh.material_ids[f];
-                if (material_id >= 0)
+                if (material_id >= 0 && static_cast<size_t>(material_id) < materials.size())
                 {
                     const tinyobj::material_t &material = materials[material_id];
 
@@ -330,7 +361,7 @@ bool SceneLoader::loadOBJFile(Scene & scene) const
                         /* 加载 map_Ka */
                         if (!material.ambient_texname.empty())
                         {
-                            const std::filesystem::path ambientTexture {material.diffuse_texname};
+                            const std::filesystem::path ambientTexture {material.ambient_texname};
                             std::string mapPath;
                             if (ambientTexture.is_absolute())
                                 mapPath = ambientTexture.string();

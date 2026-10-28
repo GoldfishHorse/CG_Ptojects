@@ -1,0 +1,39 @@
+# CMake and compiler outputs
+**/build/
+**/out/
+**/.vs/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/compile_commands.json
+**/src/**/*.o
+*.pdb
+*.ilk
+
+# Dependencies prepared by CG_Project_final/build.ps1
+CG_Project_final/third_party/glfw/
+CG_Project_final/third_party/glm/
+CG_Project_final/third_party/stb/
+CG_Project_final/third_party/tinyobjloader/
+CG_Project_final/third_party/tinyxml2/
+
+# Extracted copy of the tracked scene archive
+CG_Project_final/example-scenes-cg24/
+
+# Local render and smoke-test artifacts
+**/.runtime_scene/
+**/result/local/
+*.log
+
+# Editor and OS metadata
+.idea/
+.vscode/
+*.user
+*.suo
+.DS_Store
+Thumbs.db
+
+# Course reports kept locally only
+/survey_final/
+/survey_midterm/
+/GM_Project/*曲面造型技术文献报告.docx
